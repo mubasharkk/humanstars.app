@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -10,7 +11,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class CalendarEvent extends Model
 {
-    use HasUuids, SoftDeletes;
+    use HasFactory, HasUuids, SoftDeletes;
 
     public function uniqueIds(): array
     {
@@ -21,13 +22,18 @@ class CalendarEvent extends Model
         'calendar_id',
         'title',
         'description',
-        'location',
+        'type',
+        'meeting_url',
+        'address',
         'starts_at',
         'ends_at',
         'timezone',
         'rrule',
         'reminder_minutes',
     ];
+
+    /** latitude and longitude are set internally by the geocoding job — never by the user. */
+    protected $hidden = ['latitude', 'longitude'];
 
     protected $casts = [
         'starts_at' => 'datetime', // always UTC in DB
