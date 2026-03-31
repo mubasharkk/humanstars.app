@@ -1,58 +1,152 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# HumanStars – Calendar Module
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+> **Task reference:** [REQUIREMENTS.md](./REQUIREMENTS.md)
 
-## About Laravel
+---
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Task Summary
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+Design and implement the backend of a **calendar module** for a Laravel application. Users can create calendars, schedule events (including recurring ones via RRULE), invite individual users or groups, and share calendars with configurable permissions. The solution should also cover how email reminders are delivered before a meeting starts.
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+---
 
-## Learning Laravel
+## Planning Strategy
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+### 1. Data Modelling
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+Four domain models built around the existing `users` table, using **UUID primary keys** and **soft deletes** throughout:
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+| Table | Purpose |
+|---|---|
+| `calendars` | User-owned calendars with name, colour, and IANA timezone |
+| `calendar_events` | Events belonging to a calendar; stores UTC datetimes, RRULE string, type (`virtual` / `on-site`), address, and meeting URL |
+| `calendar_shares` | Polymorphic share records (`User` or `Group`) with `READ` / `READWRITE` permission |
+| `event_invitees` | Polymorphic invite records (`User` or `Group`) with `pending` / `accepted` / `declined` status |
 
-## Agentic Development
+Polymorphic morphs (`shareable`, `inviteable`) keep both tables extensible — adding a new invitable entity requires no schema change.
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+### 2. API Design
 
-```bash
-composer require laravel/boost --dev
+Stateless JWT API (`tymon/jwt-auth`) with two layers of auth:
 
-php artisan boost:install
+- **Web routes** — session-based (Breeze / Inertia) for the frontend
+- **API routes** — JWT bearer token for external / mobile clients
+
+Authorization is enforced via Laravel Policies (`CalendarPolicy`, `CalendarEventPolicy`) — only owners or READWRITE share-holders can mutate resources.
+
+### 3. Backend Structure
+
+The module follows a **Actions + Services** pattern to keep controllers thin:
+
+```
+app/
+├── Actions/
+│   ├── Calendar/        CreateCalendarAction, UpdateCalendarAction, DeleteCalendarAction
+│   └── CalendarEvent/   CreateEventAction, UpdateEventAction, DeleteEventAction
+├── Services/
+│   └── GoogleMapsService   Geocoding stub (async, non-blocking)
+├── Observers/
+│   └── CalendarEventObserver   Dispatches GeocodeEventLocationJob on address change
+├── Jobs/
+│   └── GeocodeEventLocationJob   Queued — fills latitude/longitude silently
+├── Policies/
+│   ├── CalendarPolicy
+│   └── CalendarEventPolicy
+├── Http/
+│   ├── Controllers/Api/Calendar/
+│   ├── Requests/Calendar/
+│   ├── Requests/CalendarEvent/
+│   └── Resources/          CalendarResource, CalendarEventResource
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+### 4. Notification Design (Email Reminders)
 
-## Contributing
+**Synchronous (at event save time):**
+- Validate `reminder_minutes` on the request.
+- No email is sent immediately — only scheduling metadata is stored.
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+**Asynchronous (background):**
+- A **scheduled command** (`artisan schedule:run`, every minute) queries for events where `starts_at - reminder_minutes` falls within the current minute window.
+- For each match, a queued **`SendEventReminderJob`** is dispatched — it sends a Laravel `Mailable` to every accepted invitee.
+- The queue worker handles delivery without blocking any request cycle.
 
-## Code of Conduct
+```
+Scheduler (every minute)
+  └── FindUpcomingEventsCommand
+        └── dispatch SendEventReminderJob  (queued)
+              └── EventReminderMail → SMTP / SES
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+This approach guarantees no missed reminders (scheduler is the source of truth) and no HTTP latency impact (fully async via queues).
 
-## Security Vulnerabilities
+### 5. Location / Geocoding
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+Events have an optional `address` field (user-facing). `latitude` and `longitude` are **internal fields** — never exposed in API responses, auto-populated via `GeocodeEventLocationJob` whenever an on-site event's address changes.
 
-## License
+---
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+## ERD
+
+> _Diagram to be added_
+
+```
+[ ERD placeholder — paste or embed entity-relationship diagram here ]
+```
+
+---
+
+## User Action Flow
+
+> _Diagram to be added_
+
+```
+[ User action diagram placeholder — paste or embed flow diagram here ]
+```
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Framework | Laravel 13 |
+| Auth (API) | `tymon/jwt-auth` — JWT bearer tokens |
+| Auth (Web) | Laravel Breeze — session-based |
+| Frontend | Inertia.js + React 18 + Tailwind CSS v3 |
+| Calendar UI | `react-big-calendar` + `moment` |
+| Database | MySQL (via Laravel Sail / Docker) |
+| Queue | Laravel Queue (database driver, swap to Redis in production) |
+| Testing | PHPUnit feature tests — 62 passing |
+
+---
+
+## Local Setup
+
+```bash
+# Start containers
+./vendor/bin/sail up -d
+
+# Install dependencies
+./vendor/bin/sail composer install
+./vendor/bin/sail npm install
+
+# Run migrations
+./vendor/bin/sail artisan migrate
+
+# Generate JWT secret
+./vendor/bin/sail artisan jwt:secret
+
+# Build frontend
+./vendor/bin/sail npm run build
+
+# Run tests
+./vendor/bin/sail artisan test
+```
+
+---
+
+## API Collection
+
+A Postman collection is available at [`postman/HumanStars.postman_collection.json`](./postman/HumanStars.postman_collection.json).
+
+Import it into Postman, run **Login** first (token is saved automatically), then use **Create Calendar** and **Create Event** — IDs are captured into collection variables automatically.
