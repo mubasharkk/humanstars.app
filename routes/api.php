@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Calendar\CalendarController;
 use App\Http\Controllers\Api\Calendar\CalendarEventController;
+use App\Http\Controllers\Api\Calendar\EventInviteeController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->group(function () {
@@ -14,4 +15,6 @@ Route::prefix('auth')->group(function () {
 Route::middleware('auth:api')->group(function () {
     Route::apiResource('calendars', CalendarController::class);
     Route::apiResource('calendars.events', CalendarEventController::class);
+    Route::apiResource('calendars.events.invitees', EventInviteeController::class)
+        ->only(['index', 'store', 'update', 'destroy']);
 });
