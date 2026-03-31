@@ -1,0 +1,385 @@
+{
+  "info": {
+    "name": "HumanStars API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "API collection for HumanStars calendar module. Set the `base_url` variable to your local or production URL before running."
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "calendar_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "event_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const json = pm.response.json();",
+                  "    pm.collectionVariables.set('token', json.access_token);",
+                  "    console.log('Token saved:', json.access_token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"password\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "login"]
+            },
+            "description": "Authenticate a user and retrieve a JWT token. The token is automatically saved to the `token` collection variable."
+          }
+        },
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/me",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "me"]
+            },
+            "description": "Return the currently authenticated user's profile."
+          }
+        },
+        {
+          "name": "Logout",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    pm.collectionVariables.set('token', '');",
+                  "    console.log('Token cleared.');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/logout",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "logout"]
+            },
+            "description": "Invalidate the current JWT token. The `token` variable is cleared automatically."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Calendars",
+      "item": [
+        {
+          "name": "List Calendars",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/calendars",
+              "host": ["{{base_url}}"],
+              "path": ["api", "calendars"]
+            },
+            "description": "Returns all calendars for the authenticated user split into `owned` and `shared` arrays."
+          }
+        },
+        {
+          "name": "Create Calendar",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const json = pm.response.json();",
+                  "    pm.collectionVariables.set('calendar_id', json.id);",
+                  "    console.log('Calendar ID saved:', json.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Work\",\n  \"color\": \"#3B82F6\",\n  \"description\": \"Work-related meetings and deadlines.\",\n  \"timezone\": \"Europe/London\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/calendars",
+              "host": ["{{base_url}}"],
+              "path": ["api", "calendars"]
+            },
+            "description": "Create a new calendar. The new calendar's ID is automatically saved to the `calendar_id` variable.\n\n**Fields:**\n- `name` (required)\n- `color` (optional) — hex color, e.g. `#3B82F6`\n- `description` (optional)\n- `timezone` (optional) — IANA timezone, defaults to `UTC`"
+          }
+        },
+        {
+          "name": "Get Calendar",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/calendars/{{calendar_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "calendars", "{{calendar_id}}"]
+            },
+            "description": "Retrieve a single calendar by ID. Requires ownership or a share."
+          }
+        },
+        {
+          "name": "Update Calendar",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Work (Updated)\",\n  \"color\": \"#10B981\",\n  \"timezone\": \"America/New_York\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/calendars/{{calendar_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "calendars", "{{calendar_id}}"]
+            },
+            "description": "Update a calendar. All fields are optional (PATCH-style). Requires ownership or READWRITE share."
+          }
+        },
+        {
+          "name": "Delete Calendar",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/calendars/{{calendar_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "calendars", "{{calendar_id}}"]
+            },
+            "description": "Soft-delete a calendar. Only the owner can delete."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Calendar Events",
+      "item": [
+        {
+          "name": "List Events",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/calendars/{{calendar_id}}/events?from=2025-01-01&to=2025-12-31",
+              "host": ["{{base_url}}"],
+              "path": ["api", "calendars", "{{calendar_id}}", "events"],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "2025-01-01",
+                  "description": "Filter events with starts_at >= this date (optional)"
+                },
+                {
+                  "key": "to",
+                  "value": "2025-12-31",
+                  "description": "Filter events with ends_at <= this date (optional)"
+                }
+              ]
+            },
+            "description": "List events for a calendar ordered by `starts_at`. Both `from` and `to` are optional date filters."
+          }
+        },
+        {
+          "name": "Create Event — On-site",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const json = pm.response.json();",
+                  "    pm.collectionVariables.set('event_id', json.id);",
+                  "    console.log('Event ID saved:', json.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Team Offsite\",\n  \"description\": \"Quarterly planning session.\",\n  \"type\": \"on-site\",\n  \"address\": \"30 St Mary Axe, London EC3A 8BF, UK\",\n  \"starts_at\": \"2025-06-10 09:00:00\",\n  \"ends_at\": \"2025-06-10 17:00:00\",\n  \"timezone\": \"Europe/London\",\n  \"reminder_minutes\": 30\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/calendars/{{calendar_id}}/events",
+              "host": ["{{base_url}}"],
+              "path": ["api", "calendars", "{{calendar_id}}", "events"]
+            },
+            "description": "Create an on-site event. The `address` field is optional but triggers async geocoding when provided. `latitude` and `longitude` are filled in the background and never exposed in API responses.\n\n**Fields:**\n- `title` (required)\n- `type` (required) — `on-site` or `virtual`\n- `address` (optional) — physical address, geocoded automatically\n- `starts_at` (required) — UTC datetime\n- `ends_at` (required) — UTC datetime, must be after `starts_at`\n- `timezone` (optional) — IANA timezone override for this event\n- `rrule` (optional) — RFC 5545 recurrence rule, e.g. `FREQ=WEEKLY;BYDAY=MO`\n- `reminder_minutes` (optional)"
+          }
+        },
+        {
+          "name": "Create Event — Virtual",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const json = pm.response.json();",
+                  "    pm.collectionVariables.set('event_id', json.id);",
+                  "    console.log('Event ID saved:', json.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Weekly Standup\",\n  \"description\": \"Monday sync.\",\n  \"type\": \"virtual\",\n  \"meeting_url\": \"https://meet.example.com/standup\",\n  \"starts_at\": \"2025-06-09 09:00:00\",\n  \"ends_at\": \"2025-06-09 09:30:00\",\n  \"rrule\": \"FREQ=WEEKLY;BYDAY=MO\",\n  \"reminder_minutes\": 10\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/calendars/{{calendar_id}}/events",
+              "host": ["{{base_url}}"],
+              "path": ["api", "calendars", "{{calendar_id}}", "events"]
+            },
+            "description": "Create a virtual event with a meeting URL. `meeting_url` is required when `type` is `virtual`."
+          }
+        },
+        {
+          "name": "Get Event",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/calendars/{{calendar_id}}/events/{{event_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "calendars", "{{calendar_id}}", "events", "{{event_id}}"]
+            },
+            "description": "Retrieve a single event. `latitude` and `longitude` are never included in the response."
+          }
+        },
+        {
+          "name": "Update Event",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Team Offsite (Updated)\",\n  \"address\": \"1 Canada Square, London E14 5AB, UK\",\n  \"reminder_minutes\": 60\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/calendars/{{calendar_id}}/events/{{event_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "calendars", "{{calendar_id}}", "events", "{{event_id}}"]
+            },
+            "description": "Update an event. All fields are optional. Changing `address` on an on-site event re-triggers geocoding asynchronously."
+          }
+        },
+        {
+          "name": "Delete Event",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/calendars/{{calendar_id}}/events/{{event_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "calendars", "{{calendar_id}}", "events", "{{event_id}}"]
+            },
+            "description": "Soft-delete an event. Requires ownership or READWRITE share on the parent calendar."
+          }
+        }
+      ]
+    }
+  ]
+}
