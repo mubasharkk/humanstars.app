@@ -6,7 +6,7 @@
 
 ## Task Summary
 
-Design and implement the backend of a **calendar module** for a Laravel application. Users can create calendars, schedule events (including recurring ones via RRULE), invite individual users or groups, and share calendars with configurable permissions. The solution should also cover how email reminders are delivered before a meeting starts.
+Design and implement the backend of a **calendar module** for a Laravel application. Users can create calendars, schedule events (including recurring ones via RRULE), invite individual users or groups, and share calendars with configurable permissions. The solution also covers how email reminders are delivered before a meeting starts.
 
 ---
 
@@ -14,94 +14,160 @@ Design and implement the backend of a **calendar module** for a Laravel applicat
 
 ### 1. Data Modelling
 
-Four domain models built around the existing `users` table, using **UUID primary keys** and **soft deletes** throughout:
+Six domain tables built around the existing `users` table. Calendar and event PKs use **UUIDs** with **soft deletes**; groups use standard auto-increment IDs.
 
 | Table | Purpose |
 |---|---|
 | `calendars` | User-owned calendars with name, colour, and IANA timezone |
-| `calendar_events` | Events belonging to a calendar; stores UTC datetimes, RRULE string, type (`virtual` / `on-site`), address, and meeting URL |
-| `calendar_shares` | Polymorphic share records (`User` or `Group`) with `READ` / `READWRITE` permission |
-| `event_invitees` | Polymorphic invite records (`User` or `Group`) with `pending` / `accepted` / `declined` status |
+| `calendar_events` | Events with UTC datetimes, RRULE, type (`virtual`/`on-site`), address, meeting URL |
+| `calendar_shares` | Polymorphic share records (`User` or `Group`) — `READ` / `READWRITE` |
+| `event_invitees` | Polymorphic invite records (`User` or `Group`) — `pending` / `accepted` / `declined` |
+| `groups` | Named collections of users (pre-existing per spec, implemented here) |
+| `group_members` | Pivot: `group_id` + `user_id`, unique constraint |
 
-Polymorphic morphs (`shareable`, `inviteable`) keep both tables extensible — adding a new invitable entity requires no schema change.
+Polymorphic morphs (`shareable`, `inviteable`) make both share and invite tables open to any future entity without schema changes.
 
 ### 2. API Design
 
-Stateless JWT API (`tymon/jwt-auth`) with two layers of auth:
+Stateless JWT API (`tymon/jwt-auth`) with two auth layers:
 
 - **Web routes** — session-based (Breeze / Inertia) for the frontend
 - **API routes** — JWT bearer token for external / mobile clients
 
-Authorization is enforced via Laravel Policies (`CalendarPolicy`, `CalendarEventPolicy`) — only owners or READWRITE share-holders can mutate resources.
+Authorization is enforced via Laravel Policies — only owners or READWRITE share-holders can mutate resources; invitees can update only their own RSVP status.
 
 ### 3. Backend Structure
 
-The module follows a **Actions + Services** pattern to keep controllers thin:
+The module follows an **Actions + Services** pattern to keep controllers thin and testable:
 
 ```
 app/
 ├── Actions/
-│   ├── Calendar/        CreateCalendarAction, UpdateCalendarAction, DeleteCalendarAction
-│   └── CalendarEvent/   CreateEventAction, UpdateEventAction, DeleteEventAction
+│   ├── Calendar/          CreateCalendarAction, UpdateCalendarAction, DeleteCalendarAction
+│   ├── CalendarEvent/     CreateEventAction, UpdateEventAction, DeleteEventAction
+│   └── EventInvitee/      CreateInviteeAction, UpdateInviteeAction, DeleteInviteeAction
 ├── Services/
-│   └── GoogleMapsService   Geocoding stub (async, non-blocking)
+│   └── GoogleMapsService  Geocoding stub (TODO: wire GOOGLE_MAPS_API_KEY)
 ├── Observers/
 │   └── CalendarEventObserver   Dispatches GeocodeEventLocationJob on address change
 ├── Jobs/
-│   └── GeocodeEventLocationJob   Queued — fills latitude/longitude silently
+│   ├── GeocodeEventLocationJob  Queued — fills latitude/longitude silently
+│   └── SendEventReminderJob     Queued — sends EventReminderMail to all recipients
+├── Console/Commands/
+│   └── SendEventReminders  Scheduled every minute — finds due reminders and dispatches jobs
+├── Mail/
+│   └── EventReminderMail   Mailable with HTML template (event details, join link / address)
 ├── Policies/
 │   ├── CalendarPolicy
-│   └── CalendarEventPolicy
-├── Http/
-│   ├── Controllers/Api/Calendar/
-│   ├── Requests/Calendar/
-│   ├── Requests/CalendarEvent/
-│   └── Resources/          CalendarResource, CalendarEventResource
+│   ├── CalendarEventPolicy
+│   └── EventInviteePolicy
+└── Http/
+    ├── Controllers/Api/Calendar/
+    │   ├── CalendarController
+    │   ├── CalendarEventController
+    │   └── EventInviteeController
+    ├── Requests/Calendar/, Requests/CalendarEvent/, Requests/EventInvitee/
+    └── Resources/   CalendarResource, CalendarEventResource, EventInviteeResource
 ```
 
 ### 4. Notification Design (Email Reminders)
 
 **Synchronous (at event save time):**
-- Validate `reminder_minutes` on the request.
-- No email is sent immediately — only scheduling metadata is stored.
+- `reminder_minutes` is validated and stored on the event — no email is sent immediately.
 
 **Asynchronous (background):**
-- A **scheduled command** (`artisan schedule:run`, every minute) queries for events where `starts_at - reminder_minutes` falls within the current minute window.
-- For each match, a queued **`SendEventReminderJob`** is dispatched — it sends a Laravel `Mailable` to every accepted invitee.
-- The queue worker handles delivery without blocking any request cycle.
+- `SendEventReminders` artisan command runs **every minute** via the Laravel scheduler.
+- It queries events where `starts_at − reminder_minutes = now (±30 s)`.
+- For each match a queued `SendEventReminderJob` is dispatched — it collects all accepted User invitees, members of accepted Group invitees, and the calendar owner, then sends `EventReminderMail` to each.
 
 ```
 Scheduler (every minute)
-  └── FindUpcomingEventsCommand
-        └── dispatch SendEventReminderJob  (queued)
-              └── EventReminderMail → SMTP / SES
+  └── SendEventReminders command
+        └── dispatch SendEventReminderJob  (queued, per event)
+              └── EventReminderMail → accepted invitees + group members + owner
 ```
 
-This approach guarantees no missed reminders (scheduler is the source of truth) and no HTTP latency impact (fully async via queues).
+No HTTP request is ever blocked by email delivery. The scheduler is the single source of truth — no reminders are missed even if the queue is temporarily slow.
 
 ### 5. Location / Geocoding
 
-Events have an optional `address` field (user-facing). `latitude` and `longitude` are **internal fields** — never exposed in API responses, auto-populated via `GeocodeEventLocationJob` whenever an on-site event's address changes.
+Events have an optional `address` text field (user-facing). `latitude` and `longitude` are **internal-only** — excluded from all API responses and `$fillable`, auto-populated by `GeocodeEventLocationJob` whenever an on-site event's address changes. The `GoogleMapsService` is currently a stub; see inline TODO to wire the Geocoding API key.
 
 ---
 
 ## ERD
 
-> _Diagram to be added_
-
 ```
-[ ERD placeholder — paste or embed entity-relationship diagram here ]
+USERS ──────────────────────< CALENDARS ──────────────────< CALENDAR_EVENTS
+  │  \                              │                               │
+  │   \──< GROUP_MEMBERS >──< GROUPS                               │
+  │                                 │                    ┌─────────┴──────────┐
+  │                                 │                    │                    │
+  │                         CALENDAR_SHARES        EVENT_INVITEES       EVENT_INVITEES
+  │                         (shareable morph)      (inviteable=User)  (inviteable=Group)
+  │                              │                       │                    │
+  └──────────────────────────────┘                    USERS               GROUPS
 ```
 
 ---
 
 ## User Action Flow
 
-> _Diagram to be added_
+```
+[User]
+   │
+   ├── Register / Login ──► receive JWT token
+   │
+   ├── Create Calendar
+   │      └── stored with owner = user, default timezone
+   │
+   ├── Share Calendar
+   │      └── assign READ or READWRITE to a User or Group
+   │
+   ├── Create Event
+   │      ├── virtual  → requires meeting_url
+   │      ├── on-site  → optional address (geocoded async in background)
+   │      ├── optional RRULE (e.g. FREQ=WEEKLY;BYDAY=MO)
+   │      └── optional reminder_minutes (triggers scheduler-based email)
+   │
+   ├── Invite Participants
+   │      ├── Invite User  → EventInvitee (inviteable = User,  status = pending)
+   │      └── Invite Group → EventInvitee (inviteable = Group, status = pending)
+   │
+   ├── Respond to Invitation  (invitee only)
+   │      └── PATCH status → accepted | declined
+   │
+   ├── View Events (calendar view)
+   │      └── filtered by date range (from / to) across owned + shared calendars
+   │
+   └── Receive Reminder Email  (background)
+          └── Scheduler → SendEventReminderJob → EventReminderMail
+                └── recipients: accepted invitees + group members + calendar owner
+```
 
-```
-[ User action diagram placeholder — paste or embed flow diagram here ]
-```
+---
+
+## API Reference
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/auth/login` | Login, returns JWT token |
+| `GET` | `/api/auth/me` | Authenticated user profile |
+| `POST` | `/api/auth/logout` | Invalidate token |
+| `GET` | `/api/calendars` | List owned + shared calendars |
+| `POST` | `/api/calendars` | Create calendar |
+| `GET` | `/api/calendars/{id}` | Get calendar |
+| `PUT` | `/api/calendars/{id}` | Update calendar |
+| `DELETE` | `/api/calendars/{id}` | Delete calendar (soft) |
+| `GET` | `/api/calendars/{id}/events` | List events (`?from=&to=`) |
+| `POST` | `/api/calendars/{id}/events` | Create event |
+| `GET` | `/api/calendars/{id}/events/{id}` | Get event |
+| `PUT` | `/api/calendars/{id}/events/{id}` | Update event |
+| `DELETE` | `/api/calendars/{id}/events/{id}` | Delete event (soft) |
+| `GET` | `/api/calendars/{id}/events/{id}/invitees` | List invitees |
+| `POST` | `/api/calendars/{id}/events/{id}/invitees` | Invite user or group |
+| `PATCH` | `/api/calendars/{id}/events/{id}/invitees/{id}` | Update RSVP status |
+| `DELETE` | `/api/calendars/{id}/events/{id}/invitees/{id}` | Remove invitee |
 
 ---
 
@@ -116,7 +182,8 @@ Events have an optional `address` field (user-facing). `latitude` and `longitude
 | Calendar UI | `react-big-calendar` + `moment` |
 | Database | MySQL (via Laravel Sail / Docker) |
 | Queue | Laravel Queue (database driver, swap to Redis in production) |
-| Testing | PHPUnit feature tests — 62 passing |
+| Scheduler | Laravel Scheduler — `artisan schedule:run` every minute |
+| Testing | PHPUnit feature tests — **75 passing** |
 
 ---
 
@@ -141,6 +208,12 @@ Events have an optional `address` field (user-facing). `latitude` and `longitude
 
 # Run tests
 ./vendor/bin/sail artisan test
+
+# Start queue worker (required for geocoding + email reminders)
+./vendor/bin/sail artisan queue:work
+
+# Start scheduler (required for email reminders — runs every minute)
+./vendor/bin/sail artisan schedule:work
 ```
 
 ---
@@ -149,4 +222,4 @@ Events have an optional `address` field (user-facing). `latitude` and `longitude
 
 A Postman collection is available at [`postman/HumanStars.postman_collection.json`](./postman/HumanStars.postman_collection.json).
 
-Import it into Postman, run **Login** first (token is saved automatically), then use **Create Calendar** and **Create Event** — IDs are captured into collection variables automatically.
+Import it into Postman, run **Login** first (token is saved automatically), then use **Create Calendar** → **Create Event** → **Invite User / Group** — IDs are captured into collection variables automatically.

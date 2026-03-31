@@ -2,7 +2,7 @@
   "info": {
     "name": "HumanStars API",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "API collection for HumanStars calendar module. Set the `base_url` variable to your local or production URL before running."
+    "description": "API collection for HumanStars calendar module.\n\nWorkflow:\n1. Run **Login** — token is saved automatically.\n2. Run **Create Calendar** — calendar_id is saved automatically.\n3. Run **Create Event** — event_id is saved automatically.\n4. Run **Invite User** — invitee_id is saved automatically.\n\nSet `base_url` to your local or production URL before running."
   },
   "variable": [
     {
@@ -22,6 +22,11 @@
     },
     {
       "key": "event_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "invitee_id",
       "value": "",
       "type": "string"
     }
@@ -58,9 +63,7 @@
             }
           ],
           "request": {
-            "auth": {
-              "type": "noauth"
-            },
+            "auth": { "type": "noauth" },
             "method": "POST",
             "header": [
               { "key": "Accept", "value": "application/json" },
@@ -82,9 +85,7 @@
           "name": "Me",
           "request": {
             "method": "GET",
-            "header": [
-              { "key": "Accept", "value": "application/json" }
-            ],
+            "header": [{ "key": "Accept", "value": "application/json" }],
             "url": {
               "raw": "{{base_url}}/api/auth/me",
               "host": ["{{base_url}}"],
@@ -111,9 +112,7 @@
           ],
           "request": {
             "method": "POST",
-            "header": [
-              { "key": "Accept", "value": "application/json" }
-            ],
+            "header": [{ "key": "Accept", "value": "application/json" }],
             "url": {
               "raw": "{{base_url}}/api/auth/logout",
               "host": ["{{base_url}}"],
@@ -131,15 +130,13 @@
           "name": "List Calendars",
           "request": {
             "method": "GET",
-            "header": [
-              { "key": "Accept", "value": "application/json" }
-            ],
+            "header": [{ "key": "Accept", "value": "application/json" }],
             "url": {
               "raw": "{{base_url}}/api/calendars",
               "host": ["{{base_url}}"],
               "path": ["api", "calendars"]
             },
-            "description": "Returns all calendars for the authenticated user split into `owned` and `shared` arrays."
+            "description": "Returns all calendars split into `owned` and `shared` arrays."
           }
         },
         {
@@ -174,22 +171,20 @@
               "host": ["{{base_url}}"],
               "path": ["api", "calendars"]
             },
-            "description": "Create a new calendar. The new calendar's ID is automatically saved to the `calendar_id` variable.\n\n**Fields:**\n- `name` (required)\n- `color` (optional) — hex color, e.g. `#3B82F6`\n- `description` (optional)\n- `timezone` (optional) — IANA timezone, defaults to `UTC`"
+            "description": "Create a new calendar. The new calendar's ID is saved to `calendar_id` automatically.\n\n**Fields:**\n- `name` (required)\n- `color` (optional) — hex, e.g. `#3B82F6`\n- `description` (optional)\n- `timezone` (optional) — IANA timezone, defaults to `UTC`"
           }
         },
         {
           "name": "Get Calendar",
           "request": {
             "method": "GET",
-            "header": [
-              { "key": "Accept", "value": "application/json" }
-            ],
+            "header": [{ "key": "Accept", "value": "application/json" }],
             "url": {
               "raw": "{{base_url}}/api/calendars/{{calendar_id}}",
               "host": ["{{base_url}}"],
               "path": ["api", "calendars", "{{calendar_id}}"]
             },
-            "description": "Retrieve a single calendar by ID. Requires ownership or a share."
+            "description": "Retrieve a single calendar. Requires ownership or a share."
           }
         },
         {
@@ -209,22 +204,20 @@
               "host": ["{{base_url}}"],
               "path": ["api", "calendars", "{{calendar_id}}"]
             },
-            "description": "Update a calendar. All fields are optional (PATCH-style). Requires ownership or READWRITE share."
+            "description": "Update a calendar. All fields optional. Requires ownership or READWRITE share."
           }
         },
         {
           "name": "Delete Calendar",
           "request": {
             "method": "DELETE",
-            "header": [
-              { "key": "Accept", "value": "application/json" }
-            ],
+            "header": [{ "key": "Accept", "value": "application/json" }],
             "url": {
               "raw": "{{base_url}}/api/calendars/{{calendar_id}}",
               "host": ["{{base_url}}"],
               "path": ["api", "calendars", "{{calendar_id}}"]
             },
-            "description": "Soft-delete a calendar. Only the owner can delete."
+            "description": "Soft-delete a calendar. Owner only."
           }
         }
       ]
@@ -236,9 +229,7 @@
           "name": "List Events",
           "request": {
             "method": "GET",
-            "header": [
-              { "key": "Accept", "value": "application/json" }
-            ],
+            "header": [{ "key": "Accept", "value": "application/json" }],
             "url": {
               "raw": "{{base_url}}/api/calendars/{{calendar_id}}/events?from=2026-04-01&to=2026-12-31",
               "host": ["{{base_url}}"],
@@ -256,7 +247,7 @@
                 }
               ]
             },
-            "description": "List events for a calendar ordered by `starts_at`. Both `from` and `to` are optional date filters."
+            "description": "List events ordered by `starts_at`. Both `from` and `to` are optional."
           }
         },
         {
@@ -291,7 +282,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "calendars", "{{calendar_id}}", "events"]
             },
-            "description": "Create an on-site event. The `address` field is optional but triggers async geocoding when provided. `latitude` and `longitude` are filled in the background and never exposed in API responses.\n\n**Fields:**\n- `title` (required)\n- `type` (required) — `on-site` or `virtual`\n- `address` (optional) — physical address, geocoded automatically\n- `starts_at` (required) — UTC datetime\n- `ends_at` (required) — UTC datetime, must be after `starts_at`\n- `timezone` (optional) — IANA timezone override for this event\n- `rrule` (optional) — RFC 5545 recurrence rule, e.g. `FREQ=WEEKLY;BYDAY=MO`\n- `reminder_minutes` (optional)"
+            "description": "Create an on-site event. `address` is optional and triggers async geocoding — `latitude`/`longitude` are filled in the background and never exposed in responses.\n\n**Fields:**\n- `title` (required)\n- `type` (required) — `on-site` or `virtual`\n- `address` (optional) — geocoded automatically\n- `starts_at` / `ends_at` (required) — UTC datetimes\n- `timezone` (optional) — IANA override for this event\n- `rrule` (optional) — RFC 5545, e.g. `FREQ=WEEKLY;BYDAY=MO`\n- `reminder_minutes` (optional) — triggers a reminder email that many minutes before start"
           }
         },
         {
@@ -326,16 +317,14 @@
               "host": ["{{base_url}}"],
               "path": ["api", "calendars", "{{calendar_id}}", "events"]
             },
-            "description": "Create a virtual event with a meeting URL. `meeting_url` is required when `type` is `virtual`."
+            "description": "Create a virtual event. `meeting_url` is required when `type` is `virtual`."
           }
         },
         {
           "name": "Get Event",
           "request": {
             "method": "GET",
-            "header": [
-              { "key": "Accept", "value": "application/json" }
-            ],
+            "header": [{ "key": "Accept", "value": "application/json" }],
             "url": {
               "raw": "{{base_url}}/api/calendars/{{calendar_id}}/events/{{event_id}}",
               "host": ["{{base_url}}"],
@@ -361,22 +350,141 @@
               "host": ["{{base_url}}"],
               "path": ["api", "calendars", "{{calendar_id}}", "events", "{{event_id}}"]
             },
-            "description": "Update an event. All fields are optional. Changing `address` on an on-site event re-triggers geocoding asynchronously."
+            "description": "Update an event. All fields optional. Changing `address` on an on-site event re-triggers geocoding asynchronously."
           }
         },
         {
           "name": "Delete Event",
           "request": {
             "method": "DELETE",
-            "header": [
-              { "key": "Accept", "value": "application/json" }
-            ],
+            "header": [{ "key": "Accept", "value": "application/json" }],
             "url": {
               "raw": "{{base_url}}/api/calendars/{{calendar_id}}/events/{{event_id}}",
               "host": ["{{base_url}}"],
               "path": ["api", "calendars", "{{calendar_id}}", "events", "{{event_id}}"]
             },
             "description": "Soft-delete an event. Requires ownership or READWRITE share on the parent calendar."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Event Invitees",
+      "item": [
+        {
+          "name": "List Invitees",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/calendars/{{calendar_id}}/events/{{event_id}}/invitees",
+              "host": ["{{base_url}}"],
+              "path": ["api", "calendars", "{{calendar_id}}", "events", "{{event_id}}", "invitees"]
+            },
+            "description": "List all invitees for an event. Accessible by the calendar owner, READWRITE share-holders, and the invited users themselves."
+          }
+        },
+        {
+          "name": "Invite User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const json = pm.response.json();",
+                  "    pm.collectionVariables.set('invitee_id', json.id);",
+                  "    console.log('Invitee ID saved:', json.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"inviteable_type\": \"user\",\n  \"inviteable_id\": 1\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/calendars/{{calendar_id}}/events/{{event_id}}/invitees",
+              "host": ["{{base_url}}"],
+              "path": ["api", "calendars", "{{calendar_id}}", "events", "{{event_id}}", "invitees"]
+            },
+            "description": "Invite a user to the event. The invitee_id is saved automatically.\n\n**Fields:**\n- `inviteable_type` (required) — `user` or `group`\n- `inviteable_id` (required) — ID of the user or group\n\nDuplicates are rejected. Requires ownership or READWRITE share."
+          }
+        },
+        {
+          "name": "Invite Group",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const json = pm.response.json();",
+                  "    pm.collectionVariables.set('invitee_id', json.id);",
+                  "    console.log('Invitee ID saved:', json.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"inviteable_type\": \"group\",\n  \"inviteable_id\": 1\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/calendars/{{calendar_id}}/events/{{event_id}}/invitees",
+              "host": ["{{base_url}}"],
+              "path": ["api", "calendars", "{{calendar_id}}", "events", "{{event_id}}", "invitees"]
+            },
+            "description": "Invite an entire group to the event. All group members receive reminder emails when the event reminder fires.\n\nRequires ownership or READWRITE share."
+          }
+        },
+        {
+          "name": "Update RSVP Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"accepted\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/calendars/{{calendar_id}}/events/{{event_id}}/invitees/{{invitee_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "calendars", "{{calendar_id}}", "events", "{{event_id}}", "invitees", "{{invitee_id}}"]
+            },
+            "description": "Update the RSVP status of an invitee record.\n\n**Fields:**\n- `status` (required) — `pending`, `accepted`, or `declined`\n\n**Access rules:**\n- The invited user can update their own record.\n- The calendar owner / READWRITE share-holder can update any record.\n\nOnly `accepted` invitees receive reminder emails."
+          }
+        },
+        {
+          "name": "Remove Invitee",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/calendars/{{calendar_id}}/events/{{event_id}}/invitees/{{invitee_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "calendars", "{{calendar_id}}", "events", "{{event_id}}", "invitees", "{{invitee_id}}"]
+            },
+            "description": "Remove an invitee from the event. Requires ownership or READWRITE share on the parent calendar."
           }
         }
       ]
