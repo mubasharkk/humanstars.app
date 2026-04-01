@@ -14,16 +14,16 @@ Design and implement the backend of a **calendar module** for a Laravel applicat
 
 ### 1. Data Modelling
 
-Six domain tables built around the existing `users` table. Calendar and event PKs use **UUIDs** with **soft deletes**; groups use standard auto-increment IDs.
+Seven domain tables built around the existing `users` table. Calendar and event PKs use **UUIDs** with **soft deletes**; groups use standard auto-increment IDs.
 
 | Table | Purpose |
 |---|---|
+| `groups` | Named collections of users, owned by a user |
+| `group_members` | Pivot: `group_id` + `user_id`, unique constraint |
 | `calendars` | User-owned calendars with name, colour, and IANA timezone |
 | `calendar_events` | Events with UTC datetimes, RRULE, type (`virtual`/`on-site`), address, meeting URL |
 | `calendar_shares` | Polymorphic share records (`User` or `Group`) — `READ` / `READWRITE` |
 | `event_invitees` | Polymorphic invite records (`User` or `Group`) — `pending` / `accepted` / `declined` |
-| `groups` | Named collections of users (pre-existing per spec, implemented here) |
-| `group_members` | Pivot: `group_id` + `user_id`, unique constraint |
 
 Polymorphic morphs (`shareable`, `inviteable`) make both share and invite tables open to any future entity without schema changes.
 
@@ -45,7 +45,9 @@ app/
 ├── Actions/
 │   ├── Calendar/          CreateCalendarAction, UpdateCalendarAction, DeleteCalendarAction
 │   ├── CalendarEvent/     CreateEventAction, UpdateEventAction, DeleteEventAction
-│   └── EventInvitee/      CreateInviteeAction, UpdateInviteeAction, DeleteInviteeAction
+│   ├── EventInvitee/      CreateInviteeAction, UpdateInviteeAction, DeleteInviteeAction
+│   └── Group/             CreateGroupAction, UpdateGroupAction, DeleteGroupAction,
+│                          AddGroupMemberAction, RemoveGroupMemberAction
 ├── Services/
 │   └── GoogleMapsService  Geocoding stub (TODO: wire GOOGLE_MAPS_API_KEY)
 ├── Observers/
@@ -60,14 +62,16 @@ app/
 ├── Policies/
 │   ├── CalendarPolicy
 │   ├── CalendarEventPolicy
-│   └── EventInviteePolicy
+│   ├── EventInviteePolicy
+│   └── GroupPolicy
 └── Http/
-    ├── Controllers/Api/Calendar/
-    │   ├── CalendarController
-    │   ├── CalendarEventController
-    │   └── EventInviteeController
-    ├── Requests/Calendar/, Requests/CalendarEvent/, Requests/EventInvitee/
-    └── Resources/   CalendarResource, CalendarEventResource, EventInviteeResource
+    ├── Controllers/Api/
+    │   ├── Auth/           AuthController
+    │   ├── Calendar/       CalendarController, CalendarEventController, EventInviteeController
+    │   └── Group/          GroupController, GroupMemberController
+    ├── Requests/Calendar/, Requests/CalendarEvent/, Requests/EventInvitee/, Requests/Group/
+    └── Resources/          CalendarResource, CalendarEventResource,
+                            EventInviteeResource, GroupResource, GroupMemberResource
 ```
 
 ### 4. Notification Design (Email Reminders)
@@ -118,6 +122,10 @@ USERS ──────────────────────< CALEND
    │
    ├── Register / Login ──► receive JWT token
    │
+   ├── Create Group
+   │      ├── Add members (by user_id)
+   │      └── Remove members
+   │
    ├── Create Calendar
    │      └── stored with owner = user, default timezone
    │
@@ -149,21 +157,51 @@ USERS ──────────────────────< CALEND
 
 ## API Reference
 
+### Auth
+
 | Method | Endpoint | Description |
 |---|---|---|
 | `POST` | `/api/auth/login` | Login, returns JWT token |
 | `GET` | `/api/auth/me` | Authenticated user profile |
 | `POST` | `/api/auth/logout` | Invalidate token |
-| `GET` | `/api/calendars` | List owned + shared calendars |
+
+### Groups
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/groups` | List owned + member groups (split) |
+| `POST` | `/api/groups` | Create group |
+| `GET` | `/api/groups/{id}` | Get group (owner or member) |
+| `PUT` | `/api/groups/{id}` | Update group (owner only) |
+| `DELETE` | `/api/groups/{id}` | Delete group (owner only) |
+| `GET` | `/api/groups/{id}/members` | List members |
+| `POST` | `/api/groups/{id}/members` | Add member `{ user_id }` |
+| `DELETE` | `/api/groups/{id}/members/{user}` | Remove member |
+
+### Calendars
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/calendars` | List owned + shared calendars (split) |
 | `POST` | `/api/calendars` | Create calendar |
 | `GET` | `/api/calendars/{id}` | Get calendar |
 | `PUT` | `/api/calendars/{id}` | Update calendar |
-| `DELETE` | `/api/calendars/{id}` | Delete calendar (soft) |
+| `DELETE` | `/api/calendars/{id}` | Soft-delete calendar |
+
+### Calendar Events
+
+| Method | Endpoint | Description |
+|---|---|---|
 | `GET` | `/api/calendars/{id}/events` | List events (`?from=&to=`) |
 | `POST` | `/api/calendars/{id}/events` | Create event |
 | `GET` | `/api/calendars/{id}/events/{id}` | Get event |
 | `PUT` | `/api/calendars/{id}/events/{id}` | Update event |
-| `DELETE` | `/api/calendars/{id}/events/{id}` | Delete event (soft) |
+| `DELETE` | `/api/calendars/{id}/events/{id}` | Soft-delete event |
+
+### Event Invitees
+
+| Method | Endpoint | Description |
+|---|---|---|
 | `GET` | `/api/calendars/{id}/events/{id}/invitees` | List invitees |
 | `POST` | `/api/calendars/{id}/events/{id}/invitees` | Invite user or group |
 | `PATCH` | `/api/calendars/{id}/events/{id}/invitees/{id}` | Update RSVP status |
@@ -183,7 +221,7 @@ USERS ──────────────────────< CALEND
 | Database | MySQL (via Laravel Sail / Docker) |
 | Queue | Laravel Queue (database driver, swap to Redis in production) |
 | Scheduler | Laravel Scheduler — `artisan schedule:run` every minute |
-| Testing | PHPUnit feature tests — **75 passing** |
+| Testing | PHPUnit feature tests — **96 passing** |
 
 ---
 
@@ -222,4 +260,5 @@ USERS ──────────────────────< CALEND
 
 A Postman collection is available at [`postman/HumanStars.postman_collection.json`](./postman/HumanStars.postman_collection.json).
 
-Import it into Postman, run **Login** first (token is saved automatically), then use **Create Calendar** → **Create Event** → **Invite User / Group** — IDs are captured into collection variables automatically.
+Import it into Postman, run **Login** first (token is saved automatically), then follow the workflow:
+**Create Group** → **Add Member** → **Create Calendar** → **Create Event** → **Invite User / Group** — IDs are captured into collection variables automatically.

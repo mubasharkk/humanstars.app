@@ -2,7 +2,7 @@
   "info": {
     "name": "HumanStars API",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "API collection for HumanStars calendar module.\n\nWorkflow:\n1. Run **Login** — token is saved automatically.\n2. Run **Create Calendar** — calendar_id is saved automatically.\n3. Run **Create Event** — event_id is saved automatically.\n4. Run **Invite User** — invitee_id is saved automatically.\n\nSet `base_url` to your local or production URL before running."
+    "description": "API collection for HumanStars calendar module.\n\nWorkflow:\n1. Run **Login** — token is saved automatically.\n2. Run **Create Group** — group_id is saved automatically.\n3. Run **Add Member** — adds a user to the group.\n4. Run **Create Calendar** — calendar_id is saved automatically.\n5. Run **Create Event** — event_id is saved automatically.\n6. Run **Invite User / Invite Group** — invitee_id is saved automatically.\n\nSet `base_url` to your local or production URL before running."
   },
   "variable": [
     {
@@ -27,6 +27,11 @@
     },
     {
       "key": "invitee_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "group_id",
       "value": "",
       "type": "string"
     }
@@ -119,6 +124,151 @@
               "path": ["api", "auth", "logout"]
             },
             "description": "Invalidate the current JWT token. The `token` variable is cleared automatically."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Groups",
+      "item": [
+        {
+          "name": "List Groups",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/groups",
+              "host": ["{{base_url}}"],
+              "path": ["api", "groups"]
+            },
+            "description": "Returns groups split into `owned` (groups you created) and `member` (groups you belong to but did not create)."
+          }
+        },
+        {
+          "name": "Create Group",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const json = pm.response.json();",
+                  "    pm.collectionVariables.set('group_id', json.id);",
+                  "    console.log('Group ID saved:', json.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Engineering Team\",\n  \"description\": \"All engineering staff.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/groups",
+              "host": ["{{base_url}}"],
+              "path": ["api", "groups"]
+            },
+            "description": "Create a new group. The new group's ID is saved to `group_id` automatically.\n\n**Fields:**\n- `name` (required)\n- `description` (optional)"
+          }
+        },
+        {
+          "name": "Get Group",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/groups/{{group_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "groups", "{{group_id}}"]
+            },
+            "description": "Retrieve a single group. Accessible by the owner or any group member. Response includes `member_count`."
+          }
+        },
+        {
+          "name": "Update Group",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Engineering Team (Updated)\",\n  \"description\": \"Core engineering staff only.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/groups/{{group_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "groups", "{{group_id}}"]
+            },
+            "description": "Update a group's name or description. Owner only. All fields optional."
+          }
+        },
+        {
+          "name": "Delete Group",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/groups/{{group_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "groups", "{{group_id}}"]
+            },
+            "description": "Delete a group and cascade-remove all memberships. Owner only."
+          }
+        },
+        {
+          "name": "List Members",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/groups/{{group_id}}/members",
+              "host": ["{{base_url}}"],
+              "path": ["api", "groups", "{{group_id}}", "members"]
+            },
+            "description": "List all members of a group. Accessible by the owner or any group member. Each entry includes `id`, `name`, `email`, and `joined_at`."
+          }
+        },
+        {
+          "name": "Add Member",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": 1\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/groups/{{group_id}}/members",
+              "host": ["{{base_url}}"],
+              "path": ["api", "groups", "{{group_id}}", "members"]
+            },
+            "description": "Add a user to the group. Owner only.\n\n**Fields:**\n- `user_id` (required) — must exist; duplicates are rejected."
+          }
+        },
+        {
+          "name": "Remove Member",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/groups/{{group_id}}/members/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "groups", "{{group_id}}", "members", "1"]
+            },
+            "description": "Remove a user from the group. Owner only. Replace `1` in the URL with the target user's ID."
           }
         }
       ]
